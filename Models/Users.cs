@@ -30,8 +30,12 @@ namespace api.Models
 
         public bool IsLoginLockoutEnabled { get; set; } = true; // To enable/disable this feature
 
-        public string? RegistrationOtp { get; set; }
-        public DateTime? RegistrationOtpExpiry { get; set; }
+        public int? RegistrationOtp { get; set; } = null;
+        public DateTime? RegistrationOtpExpiry { get; set; } = null;
         public bool IsEmailVerified { get; set; } = false;
+
+        // Added fields for password reset
+        public int? PasswordResetOtp { get; set; }
+        public DateTime? PasswordResetOtpExpiry { get; set; }
     }
 }

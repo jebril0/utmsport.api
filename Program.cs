@@ -2,6 +2,7 @@ using api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Extensions.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,7 +35,7 @@ builder.Services.Configure<FormOptions>(options =>
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
-        options.Cookie.Name = "MOHANNAD_UTM_Cookie"; // Name of the cookie
+         options.Cookie.Name = "MOHANNAD_UTM_Cookie"; // Name of the cookie
         options.LoginPath = "/api/users/login"; // Redirect path for unauthenticated users
         options.ExpireTimeSpan = TimeSpan.FromDays(7); // Cookie expiration
         options.SlidingExpiration = true; // Renew cookie on each request
@@ -69,6 +70,30 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Enhance the background service to delete unverified users
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    Task.Run(async () =>
+    {
+        while (true)
+        {
+            using (var scope = app.Services.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDBcontext>();
+                var expiredUsers = context.Users.Where(u => !u.IsEmailVerified && u.RegistrationOtpExpiry < DateTime.UtcNow).ToList();
+
+                if (expiredUsers.Any())
+                {
+                    context.Users.RemoveRange(expiredUsers);
+                    await context.SaveChangesAsync();
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromMinutes(2));
+        }
+    });
+});
 
 app.Run();
 

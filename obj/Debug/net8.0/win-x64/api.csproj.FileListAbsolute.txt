@@ -129,3 +129,4 @@ C:\Users\kamel\OneDrive\سطح المكتب\UTM_BOOKING\api\obj\Debug\net8.0\win
 C:\Users\kamel\OneDrive\سطح المكتب\UTM_BOOKING\api\obj\Debug\net8.0\win-x64\api.pdb
 C:\Users\kamel\OneDrive\سطح المكتب\UTM_BOOKING\api\obj\Debug\net8.0\win-x64\api.genruntimeconfig.cache
 C:\Users\kamel\OneDrive\سطح المكتب\UTM_BOOKING\api\obj\Debug\net8.0\win-x64\ref\api.dll
+C:\Users\kamel\OneDrive\سطح المكتب\UTM_BOOKING\api\obj\Debug\net8.0\win-x64\api.sourcelink.json

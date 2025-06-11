@@ -65,38 +65,30 @@ namespace api.Controllers
 
             return Ok(user.ToUserDtos());
         }
-        
+
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] CreateUserDtos UsersDtos)
         {
             var userModel = UsersDtos.ToCreateUserDtos();
             userModel.Rolebase = "student";
-
-            // Generate OTP
-            var otp = new Random().Next(100000, 999999).ToString();
-            userModel.RegistrationOtp = otp;
-            userModel.RegistrationOtpExpiry = DateTime.UtcNow.AddMinutes(10);
             userModel.IsEmailVerified = false;
 
             await _context.Users.AddAsync(userModel);
             await _context.SaveChangesAsync();
 
-            // Send OTP email
-            using var message = new MailMessage
-            {
-                From = new MailAddress("hello@demomailtrap.co", "UTM Booking System"),
-                Subject = "Your Registration OTP",
-                Body = $"Your OTP for registration is: {otp}",
-                IsBodyHtml = false
-            };
-            message.To.Add(userModel.Email);
+            return CreatedAtAction(nameof(GetByEmail), new { email = userModel.Email }, userModel.ToUserDtos());
+        }
 
-            using var smtp = new SmtpClient("live.smtp.mailtrap.io", 587)
-            {
-                Credentials = new NetworkCredential("api", "49e7a9091f9f7bf35da2118d87f761e7"),
-                EnableSsl = true
-            };
-            await smtp.SendMailAsync(message);
+        [HttpPost("create-for-admin")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> Create_for_admin([FromBody] CreateUserDtos UsersDtos)
+        {
+            var userModel = UsersDtos.ToCreateUserDtos();
+            userModel.Rolebase = "student";
+            userModel.IsEmailVerified = true;
+
+            await _context.Users.AddAsync(userModel);
+            await _context.SaveChangesAsync();
 
             return CreatedAtAction(nameof(GetByEmail), new { email = userModel.Email }, userModel.ToUserDtos());
         }
@@ -177,6 +169,12 @@ namespace api.Controllers
                 return Unauthorized("Invalid password.");
             }
 
+            // Check if the email is verified
+            if (!user.IsEmailVerified)
+            {
+                return Unauthorized("Email not verified. Please verify your email before logging in.");
+            }
+
             // Successful login: reset attempts and lockout
             user.FailedLoginAttempts = 0;
             user.LockoutEnd = null;
@@ -245,72 +243,197 @@ namespace api.Controllers
             return Ok(new { enabled = enable });
         }
 
-        [HttpPost("verify-otp")]
-        public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpDto dto)
+        // Add OTP generation endpoint
+        [HttpPost("generate-otp/{email}")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GenerateOtp([FromRoute] string email)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
+            var user = await _context.Users.FirstOrDefaultAsync(x => x.Email == email);
 
             if (user == null)
-                return NotFound("User not found.");
-
-            if (user.RegistrationOtp != dto.Otp || user.RegistrationOtpExpiry < DateTime.UtcNow)
-                return BadRequest("Invalid or expired OTP.");
-
-            user.IsEmailVerified = true;
-            user.RegistrationOtp = null;
-            user.RegistrationOtpExpiry = null;
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "Email verified successfully." });
-        }
-
-        [HttpPost("request-registration-otp")]
-        public async Task<IActionResult> RequestRegistrationOtp([FromBody] RequestOtpDto dto)
-        {
-            // Check if OTP was already sent recently (optional, to prevent spam)
-            // You can use a separate table or in-memory cache for production
+            {
+                return NotFound("User not found");
+            }
 
             // Generate OTP
-            var otp = new Random().Next(100000, 999999).ToString();
-            var expiry = DateTime.UtcNow.AddMinutes(10);
+            var random = new Random();
+            user.RegistrationOtp = random.Next(100000, 999999); // 6-digit OTP
+            user.RegistrationOtpExpiry = DateTime.UtcNow.AddMinutes(2); // OTP valid for 2 minutes
 
-            // Send OTP email
+            await _context.SaveChangesAsync();
+
+            // Send OTP via email using MailTrap SMTP
             using var message = new MailMessage
             {
-                From = new MailAddress("hello@demomailtrap.co", "UTM Booking System"),
-                Subject = "Your Registration OTP",
-                Body = $"Your OTP for registration is: {otp}",
-                IsBodyHtml = false
+                From = new MailAddress("hello@jibna.live", "UTM Booking System"),
+                IsBodyHtml = true,
+                Subject = "🔐 Your OTP Code for UTM Booking",
+                Body = $@"
+                  <div style='font-family:Arial,sans-serif;'>
+                    <h2 style='color:#2E8B57;'>UTM Email Verification</h2>
+                    <p>
+                      Dear <b>{user.Name ?? user.Email}</b>,<br/><br/>
+                      Your One-Time Password (OTP) for email verification is:<br/>
+                      <span style='font-size:1.5em;color:#2E8B57;font-weight:bold;'>{user.RegistrationOtp}</span><br/><br/>
+                      This code will expire in 2 minutes.<br/><br/>
+                      <em>If you did not request this, please ignore this email.</em>
+                    </p>
+                  </div>"
             };
-            message.To.Add(dto.Email);
+            message.To.Add(user.Email);
 
             using var smtp = new SmtpClient("live.smtp.mailtrap.io", 587)
             {
-                Credentials = new NetworkCredential("api", "49e7a9091f9f7bf35da2118d87f761e7"),
+                Credentials = new NetworkCredential("api", "3b777591f83a047e2f6195eee833657e"),
                 EnableSsl = true
             };
             await smtp.SendMailAsync(message);
 
-            // Store OTP and expiry temporarily (for demo, use a static dictionary)
-            // In production, use a cache or a dedicated table
-            OtpStore[dto.Email] = (otp, expiry);
+            // Schedule deletion of unverified user after 1 minute
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromMinutes(1));
 
-            return Ok(new { message = "OTP sent to your email." });
+                using (var scope = HttpContext.RequestServices.CreateScope())
+                {
+                    try
+                    {
+                        var scopedContext = scope.ServiceProvider.GetRequiredService<ApplicationDBcontext>();
+                        // Updated logic to delete all users with expired OTPs and unverified emails after 1 minute
+                        var usersToDelete = await scopedContext.Users.Where(u => !u.IsEmailVerified && u.RegistrationOtpExpiry < DateTime.UtcNow).ToListAsync();
+                        if (usersToDelete.Any())
+                        {
+                            scopedContext.Users.RemoveRange(usersToDelete);
+                            await scopedContext.SaveChangesAsync();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error deleting unverified users: {ex.Message}");
+                    }
+                }
+            });
+
+            return Ok(new { message = "OTP sent successfully" });
         }
 
-        // Temporary in-memory OTP store (for demo only)
-        private static Dictionary<string, (string Otp, DateTime Expiry)> OtpStore = new();
-
-        // DTO for request
-        public class RequestOtpDto
+        // Add OTP verification endpoint
+        [HttpPost("verify-otp")]
+        [AllowAnonymous]
+        public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpRequest request)
         {
-            public string Email { get; set; }
+            // Log email and OTP for debugging
+            Console.WriteLine($"Verifying OTP for email: {request.Email}, OTP: {request.Otp}");
+
+            // Ensure email is not null and normalize it
+            if (string.IsNullOrWhiteSpace(request.Email))
+            {
+                return BadRequest("Email cannot be null or empty.");
+            }
+
+            var email = request.Email.Trim().ToLower();
+
+            var user = await _context.Users.FirstOrDefaultAsync(x => x.Email == email);
+
+            if (user == null)
+            {
+                return NotFound("User not found");
+            }
+
+            // Check OTP validity
+            if (user.RegistrationOtp != request.Otp || user.RegistrationOtpExpiry < DateTime.UtcNow)
+            {
+                // Delete user if OTP is invalid or expired
+                _context.Users.Remove(user);
+                await _context.SaveChangesAsync();
+                return BadRequest("Invalid or expired OTP. Your account has been deleted.");
+            }
+
+            // Mark email as verified
+            user.IsEmailVerified = true;
+            user.RegistrationOtp = null;
+            user.RegistrationOtpExpiry = null;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Email verified successfully" });
         }
 
-        public class VerifyOtpDto
+        // Add endpoint to request OTP for password reset
+        [HttpPost("request-password-reset-otp")]
+        [AllowAnonymous]
+        public async Task<IActionResult> RequestPasswordResetOtp([FromBody] string email)
         {
-            public string Email { get; set; }
-            public string Otp { get; set; }
+            var user = await _context.Users.FirstOrDefaultAsync(x => x.Email == email);
+
+            if (user == null)
+            {
+                return NotFound("User not found");
+            }
+
+            // Generate OTP
+            var random = new Random();
+            user.PasswordResetOtp = random.Next(100000, 999999); // 6-digit OTP
+            user.PasswordResetOtpExpiry = DateTime.UtcNow.AddMinutes(5); // OTP valid for 5 minutes
+
+            await _context.SaveChangesAsync();
+
+            // Send OTP via email
+            using var message = new MailMessage
+            {
+                From = new MailAddress("hello@jibna.live", "UTM Booking System"),
+                IsBodyHtml = true,
+                Subject = "🔐 Your Password Reset OTP",
+                Body = $@"
+                  <div style='font-family:Arial,sans-serif;'>
+                    <h2 style='color:#2E8B57;'>Password Reset Request</h2>
+                    <p>
+                      Dear <b>{user.Name ?? user.Email}</b>,<br/><br/>
+                      Your One-Time Password (OTP) for password reset is:<br/>
+                      <span style='font-size:1.5em;color:#2E8B57;font-weight:bold;'>{user.PasswordResetOtp}</span><br/><br/>
+                      This code will expire in 5 minutes.<br/><br/>
+                      <em>If you did not request this, please ignore this email.</em>
+                    </p>
+                  </div>"
+            };
+            message.To.Add(user.Email);
+
+            using var smtp = new SmtpClient("live.smtp.mailtrap.io", 587)
+            {
+                Credentials = new NetworkCredential("api", "3b777591f83a047e2f6195eee833657e"),
+                EnableSsl = true
+            };
+            await smtp.SendMailAsync(message);
+
+            return Ok(new { message = "OTP sent successfully" });
+        }
+
+        // Add endpoint to reset password using OTP
+        [HttpPost("reset-password")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(x => x.Email == request.Email);
+
+            if (user == null)
+            {
+                return NotFound("User not found");
+            }
+
+            // Validate OTP
+            if (user.PasswordResetOtp != request.Otp || user.PasswordResetOtpExpiry < DateTime.UtcNow)
+            {
+                return BadRequest("Invalid or expired OTP");
+            }
+
+            // Reset password
+            user.Password = request.NewPassword;
+            user.PasswordResetOtp = null;
+            user.PasswordResetOtpExpiry = null;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Password reset successfully" });
         }
     }
 }

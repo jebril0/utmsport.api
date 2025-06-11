@@ -222,7 +222,7 @@ namespace api.Controllers
         }
 
         // Only admin and staff can validate QR
-        [Authorize(Roles = "admin,staff")]
+        [Authorize]
         [HttpGet("validate-qr")]
         public async Task<IActionResult> ValidateQr([FromQuery] string token)
         {
@@ -269,7 +269,7 @@ namespace api.Controllers
         {
             using var message = new MailMessage
             {
-                From = new MailAddress("hello@demomailtrap.co", "UTM Booking System"),
+                From = new MailAddress("hello@jibna.live", "UTM Booking System"),
                 IsBodyHtml = true
             };
             message.To.Add(toEmail);
@@ -308,8 +308,74 @@ namespace api.Controllers
 
             using var smtp = new SmtpClient("live.smtp.mailtrap.io", 587)
             {
-                Credentials = new NetworkCredential("api", "49e7a9091f9f7bf35da2118d87f761e7"),
+                Credentials = new NetworkCredential("api", "3b777591f83a047e2f6195eee833657e"),
                 EnableSsl = true
+            };
+            await smtp.SendMailAsync(message);
+        }
+
+        // Cancel Booking
+        [Authorize]
+        [HttpDelete("cancel")]
+        public async Task<IActionResult> CancelBooking(
+            [FromQuery] string email,
+            [FromQuery] string venueName,
+            [FromQuery] TimeSpan startTime,
+            [FromQuery] TimeSpan endTime)
+        {
+            // Log incoming parameters
+            Console.WriteLine($"CancelBooking called with email: {email}, venueName: {venueName}, startTime: {startTime}, endTime: {endTime}");
+
+            var booking = await _context.Bookings
+            .Include(b => b.TimeSlot)
+            .FirstOrDefaultAsync(b => b.UserEmail == email &&
+                          b.TimeSlot != null && b.TimeSlot.VenueName == venueName &&
+                          b.TimeSlot.StartTime == startTime &&
+                          b.TimeSlot.EndTime == endTime);
+
+            if (booking == null)
+            return NotFound("Booking not found.");
+
+            _context.Bookings.Remove(booking);
+
+            var timeSlot = await _context.TimeSlots.FindAsync(booking.TimeSlotID);
+            if (timeSlot != null)
+            timeSlot.IsAvailable = true;
+
+            await _context.SaveChangesAsync();
+
+            // Send cancellation email to user
+            await SendBookingCancellationEmailAsync(email, booking);
+
+            return Ok(new { message = "Booking canceled successfully." });
+        }
+
+        // Helper method to send cancellation email
+        private async Task SendBookingCancellationEmailAsync(string toEmail, Booking booking)
+        {
+            using var message = new MailMessage
+            {
+                From = new MailAddress("hello@jibna.live", "UTM Booking System"),
+                Subject = "Your Booking Has Been Cancelled",
+                IsBodyHtml = true,
+                Body = $@"
+                  <div style='font-family:Arial,sans-serif;'>
+                    <h2 style='color:#B22222;'>Booking Cancelled</h2>
+                    <p>
+                      Dear <b>{booking.UserEmail}</b>,<br/><br/>
+                      Your booking for <b>{booking.TimeSlot?.VenueName}</b> on {booking.TimeSlot?.StartTime} - {booking.TimeSlot?.EndTime} has been <span style='color:red;font-weight:bold;'>cancelled</span> as per your request.<br/>
+                      If this was a mistake, please make a new booking.<br/><br/>
+                      <span style='color:#2E8B57;'><b>For refund, please contact <a href='mailto:staff@utm.my'>staff@utm.my</a> and provide them with the necessary information for your refund.</b></span><br/><br/>
+                      <em>Thank you for using UTM Booking System!</em>
+                    </p>
+                  </div>"
+            };
+            message.To.Add(toEmail);
+
+            using var smtp = new SmtpClient("live.smtp.mailtrap.io", 587)
+            {
+            Credentials = new NetworkCredential("api", "3b777591f83a047e2f6195eee833657e"),
+            EnableSsl = true
             };
             await smtp.SendMailAsync(message);
         }
