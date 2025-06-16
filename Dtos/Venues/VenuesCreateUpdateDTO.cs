@@ -19,5 +19,7 @@ namespace api.Models.DTOs
 
         [Required(ErrorMessage = "Venue status is required.")]
         public bool Status { get; set; }
+  
+        public decimal Price { get; set; } // <-- Add this line
     }
 }

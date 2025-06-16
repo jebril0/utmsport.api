@@ -9,5 +9,6 @@ namespace api.Models.DTOs
         public int Capacity { get; set; }
         public string Type { get; set; } = string.Empty;
         public bool Status { get; set; }
+        public decimal Price { get; set; } // <-- Add this line
     }
 }

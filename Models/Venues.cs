@@ -20,6 +20,10 @@ namespace api.Models
         [Required(ErrorMessage = "Venue status is required.")]
         public bool Status { get; set; } // True for active, False for inactive
 
+        [Required(ErrorMessage = "Venue price is required.")]
+        [Range(0, double.MaxValue, ErrorMessage = "Price must be a positive value.")]
+        public decimal Price { get; set; } // Price per booking
+
         public ICollection<TimeSlot>? TimeSlots { get; set; } // Navigation property
     }
 }

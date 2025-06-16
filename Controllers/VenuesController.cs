@@ -43,7 +43,8 @@ namespace api.Controllers
                     Location = venue.Location,
                     Capacity = venue.Capacity,
                     Type = venue.Type,
-                    Status = venue.Status
+                    Status = venue.Status,
+                    Price = venue.Price
                 },
                 TimeSlots = venue.TimeSlots.Select(ts => new TimeSlotDTO
                 {
@@ -77,7 +78,8 @@ namespace api.Controllers
                     Location = v.Location,
                     Capacity = v.Capacity,
                     Type = v.Type,
-                    Status = v.Status
+                    Status = v.Status,
+                    Price = v.Price // Include price in the DTO
                 },
                 TimeSlots = v.TimeSlots.Select(ts => new TimeSlotDTO
                 {
@@ -109,7 +111,8 @@ namespace api.Controllers
                 Location = venueDto.Location,
                 Capacity = venueDto.Capacity,
                 Type = venueDto.Type,
-                Status = venueDto.Status
+                Status = venueDto.Status,
+                Price = (decimal)venueDto.Price
             };
 
             await _context.Venues.AddAsync(venue);
@@ -140,6 +143,7 @@ namespace api.Controllers
             venue.Capacity = venueDto.Capacity;
             venue.Type = venueDto.Type;
             venue.Status = venueDto.Status;
+            venue.Price = (decimal)venueDto.Price; // Update price
 
             await _context.SaveChangesAsync();
             return Ok(new { message = "Venue updated successfully" });
