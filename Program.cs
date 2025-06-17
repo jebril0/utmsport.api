@@ -29,16 +29,16 @@ builder.Services.AddCors(options =>
 
 builder.Services.Configure<FormOptions>(options =>
 {
-    options.MultipartBodyLengthLimit = 104857600; // 100 MB
+    options.MultipartBodyLengthLimit = 104857600; 
 });
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
-         options.Cookie.Name = "MOHANNAD_UTM_Cookie"; // Name of the cookie
-        options.LoginPath = "/api/users/login"; // Redirect path for unauthenticated users
-        options.ExpireTimeSpan = TimeSpan.FromDays(7); // Cookie expiration
-        options.SlidingExpiration = true; // Renew cookie on each request
+         options.Cookie.Name = "MOHANNAD_UTM_Cookie"; 
+        options.LoginPath = "/api/users/login"; 
+        options.ExpireTimeSpan = TimeSpan.FromDays(7); 
+        options.SlidingExpiration = true; 
         options.Events = new CookieAuthenticationEvents
         {
             OnRedirectToLogin = context =>
