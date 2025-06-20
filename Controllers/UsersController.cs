@@ -255,10 +255,10 @@ namespace api.Controllers
                 return NotFound("User not found");
             }
 
-            // Generate OTP
+           
             var random = new Random();
-            user.RegistrationOtp = random.Next(100000, 999999); // 6-digit OTP
-            user.RegistrationOtpExpiry = DateTime.UtcNow.AddMinutes(2); // OTP valid for 2 minutes
+            user.RegistrationOtp = random.Next(100000, 999999); 
+            user.RegistrationOtpExpiry = DateTime.UtcNow.AddMinutes(2); 
 
             await _context.SaveChangesAsync();
 
